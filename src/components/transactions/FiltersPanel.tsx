@@ -1,7 +1,8 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Search, X } from 'lucide-react';
 import type { Account, Category } from '@/lib/db';
-import { formatMoney } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import FilterControls, { type TxFilters } from './FilterControls';
 import { cn } from '@/lib/utils';
 
@@ -48,6 +49,7 @@ export default function FiltersPanel({
   onReset,
   activeFilterCount,
 }: FiltersPanelProps) {
+  const visible = useAmountsVisible();
   const hasAny = activeFilterCount > 0 || !!search || type !== 'all' || sort !== 'newest';
 
   return (
@@ -129,16 +131,16 @@ export default function FiltersPanel({
       <div className="mt-4 space-y-2 border-t border-border/60 pt-4">
         <div className="flex items-center justify-between text-[12px]">
           <span className="text-muted-foreground">Income</span>
-          <span className="tnum font-semibold text-income">{formatMoney(totals.income, currency, locale)}</span>
+          <span className="tnum font-semibold text-income">{formatMasked(totals.income, currency, locale, visible)}</span>
         </div>
         <div className="flex items-center justify-between text-[12px]">
           <span className="text-muted-foreground">Expenses</span>
-          <span className="tnum font-semibold text-expense">{formatMoney(totals.expense, currency, locale)}</span>
+          <span className="tnum font-semibold text-expense">{formatMasked(totals.expense, currency, locale, visible)}</span>
         </div>
         <div className="flex items-center justify-between border-t border-border/60 pt-2 text-[12.5px]">
           <span className="text-muted-foreground">Net</span>
           <span className="tnum font-bold">
-            {formatMoney(totals.income - totals.expense, currency, locale, { signDisplay: 'exceptZero' })}
+            {formatMasked(totals.income - totals.expense, currency, locale, visible, { signDisplay: 'exceptZero' })}
           </span>
         </div>
         <p className="text-[11px] text-muted-foreground">

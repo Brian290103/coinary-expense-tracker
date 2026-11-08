@@ -6,13 +6,15 @@ import { toast } from 'sonner';
 import { db, softDeleteTransaction, type Account, type Category, type Transaction } from '@/lib/db';
 import { useAppStore } from '@/store/useAppStore';
 import { formatMoney } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import { groupTransactions } from '@/lib/date';
 import PageHeader from '@/components/PageHeader';
 import TransactionRow from '@/components/TransactionRow';
 import SwipeRow from '@/components/SwipeRow';
 import TransactionFilters from '@/components/TransactionFilters';
 import FiltersPanel from '@/components/transactions/FiltersPanel';
-import type { TxFilters } from '@/components/transactions/FilterControls';
+import { EMPTY_FILTERS, type TxFilters } from '@/components/transactions/FilterControls';
 import EmptyState from '@/components/EmptyState';
 import { cn } from '@/lib/utils';
 
@@ -23,17 +25,17 @@ const SORTS = [
   { value: 'lowest', label: 'Lowest' },
 ];
 
-const EMPTY_FILTERS: TxFilters = { categoryId: '', accountId: '', paymentMethod: '', from: '', to: '' };
-
 type SortValue = 'newest' | 'oldest' | 'highest' | 'lowest';
 type TypeFilter = 'all' | 'income' | 'expense';
 
 export default function Transactions() {
   const settings = useAppStore((s) => s.settings);
   const openTxSheet = useAppStore((s) => s.openTxSheet);
+  const openViewTx = useAppStore((s) => s.openViewTx);
   const askConfirm = useAppStore((s) => s.askConfirm);
   const currency = settings?.activeCurrencyCode || 'USD';
   const locale = settings?.locale || 'en-US';
+  const amountsVisible = useAmountsVisible();
 
   const [search, setSearch] = useState('');
   const [type, setType] = useState<TypeFilter>('all');
@@ -49,7 +51,14 @@ export default function Transactions() {
   const categoryMap = useMemo(() => new Map<string, Category>((categories || []).map((c) => [c.id, c])), [categories]);
   const accountMap = useMemo(() => new Map<string, Account>((accounts || []).map((a) => [a.id, a])), [accounts]);
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const activeFilterCount =
+    (filters.categoryId ? 1 : 0) +
+    (filters.accountId ? 1 : 0) +
+    (filters.paymentMethods.length > 0 ? 1 : 0) +
+    (filters.minAmount != null ? 1 : 0) +
+    (filters.maxAmount != null ? 1 : 0) +
+    (filters.from ? 1 : 0) +
+    (filters.to ? 1 : 0);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -57,7 +66,9 @@ export default function Transactions() {
       if (type !== 'all' && t.type !== type) return false;
       if (filters.categoryId && t.categoryId !== filters.categoryId) return false;
       if (filters.accountId && t.accountId !== filters.accountId) return false;
-      if (filters.paymentMethod && t.paymentMethod !== filters.paymentMethod) return false;
+      if (filters.paymentMethods.length > 0 && !filters.paymentMethods.includes(t.paymentMethod || '')) return false;
+      if (filters.minAmount != null && t.amount < filters.minAmount) return false;
+      if (filters.maxAmount != null && t.amount > filters.maxAmount) return false;
       if (filters.from && String(t.date) < filters.from) return false;
       if (filters.to && String(t.date) > filters.to) return false;
       if (term) {
@@ -68,6 +79,7 @@ export default function Transactions() {
           t.paymentMethod || '',
           accountMap.get(t.accountId)?.name || '',
           String(t.amount / 100),
+          String(t.amount),
           formatMoney(t.amount, t.currencyCode || currency, locale),
         ]
           .join(' ')
@@ -132,7 +144,7 @@ export default function Transactions() {
         accountName={accountMap.get(tx.accountId)?.name}
         currency={currency}
         locale={locale}
-        onSelect={() => openTxSheet(tx)}
+        onSelect={() => openViewTx(tx)}
       />
     </SwipeRow>
   );
@@ -235,11 +247,11 @@ export default function Transactions() {
       {filtered.length > 0 ? (
         <div className="mt-3 flex items-center justify-between rounded-2xl bg-secondary/40 px-3.5 py-2.5 lg:hidden">
           <span className="text-[11.5px] text-muted-foreground">
-            {formatMoney(totals.income, currency, locale)} in ·{' '}
-            <span className="text-expense">{formatMoney(totals.expense, currency, locale)} out</span>
+            {formatMasked(totals.income, currency, locale, amountsVisible)} in ·{' '}
+            <span className="text-expense">{formatMasked(totals.expense, currency, locale, amountsVisible)} out</span>
           </span>
           <span className="tnum text-[12px] font-semibold">
-            {formatMoney(totals.income - totals.expense, currency, locale, { signDisplay: 'exceptZero' })}
+            {formatMasked(totals.income - totals.expense, currency, locale, amountsVisible, { signDisplay: 'exceptZero' })}
           </span>
         </div>
       ) : null}

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { App as CapApp } from "@capacitor/app";
 
-const ROOT_PATHS = new Set(["/", "/today", "/welcome"]);
+const ROOT_PATHS = new Set(["/", "/onboarding"]);
 
 /**
  * Overrides Android's default back-button behavior (which would kill the app):

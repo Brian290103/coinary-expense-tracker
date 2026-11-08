@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
+import PrivacyToggle from './PrivacyToggle';
 
 interface PageHeaderProps {
   title: string;
@@ -29,7 +30,10 @@ export default function PageHeader({ title, subtitle, back, action }: PageHeader
           ) : null}
         </div>
       </div>
-      {action ? <div className="shrink-0 pt-0.5">{action}</div> : null}
+      <div className="flex shrink-0 items-center gap-2 pt-0.5">
+        <PrivacyToggle />
+        {action}
+      </div>
     </header>
   );
 }

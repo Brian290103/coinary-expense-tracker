@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Target } from 'lucide-react';
 import { db, type Budget, type Category } from '@/lib/db';
 import { useAppStore } from '@/store/useAppStore';
-import { formatMoney } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import { monthKey, monthLabel, shiftMonthKey } from '@/lib/date';
 import PageHeader from '@/components/PageHeader';
 import MonthSwitcher from '@/components/MonthSwitcher';
@@ -16,6 +17,7 @@ export default function Budgets() {
   const settings = useAppStore((s) => s.settings);
   const currency = settings?.activeCurrencyCode || 'USD';
   const locale = settings?.locale || 'en-US';
+  const amountsVisible = useAmountsVisible();
   const current = monthKey(new Date());
 
   const [month, setMonth] = useState(current);
@@ -85,17 +87,17 @@ export default function Budgets() {
 
       {rows.length > 0 ? (
         <section className="surface mt-4 p-4 md:p-5">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 [&>*]:min-w-0 md:grid-cols-3">
             <div>
               <p className="text-[11.5px] text-muted-foreground">Total budgeted</p>
               <p className="tnum mt-1 text-[21px] font-bold leading-none md:text-[25px]">
-                {formatMoney(totalBudget, currency, locale)}
+                {formatMasked(totalBudget, currency, locale, amountsVisible)}
               </p>
             </div>
             <div>
               <p className="text-[11.5px] text-muted-foreground">Total spent</p>
               <p className="tnum mt-1 text-[21px] font-bold leading-none text-expense md:text-[25px]">
-                {formatMoney(totalBudgetSpent, currency, locale)}
+                {formatMasked(totalBudgetSpent, currency, locale, amountsVisible)}
               </p>
             </div>
             <div className="col-span-2 md:col-span-1">
@@ -107,7 +109,7 @@ export default function Budgets() {
                 )}
               >
                 {over ? '−' : ''}
-                {formatMoney(Math.abs(remaining), currency, locale)}
+                {formatMasked(Math.abs(remaining), currency, locale, amountsVisible)}
               </p>
             </div>
           </div>
@@ -123,12 +125,12 @@ export default function Budgets() {
           <div className="mt-2 flex items-center justify-between text-[11.5px]">
             <span className="text-muted-foreground">{Math.round(overallPct * 100)}% of budget used</span>
             <span className={over ? 'text-expense' : 'text-muted-foreground'}>
-              {over ? `${formatMoney(Math.abs(remaining), currency, locale)} over` : `${formatMoney(remaining, currency, locale)} left`}
+              {over ? `${formatMasked(Math.abs(remaining), currency, locale, amountsVisible)} over` : `${formatMasked(remaining, currency, locale, amountsVisible)} left`}
             </span>
           </div>
           {totalSpent > totalBudgetSpent ? (
             <p className="mt-2 text-[11px] text-muted-foreground">
-              {formatMoney(totalSpent - totalBudgetSpent, currency, locale)} of spending isn't covered by a budget.
+              {formatMasked(totalSpent - totalBudgetSpent, currency, locale, amountsVisible)} of spending isn't covered by a budget.
             </p>
           ) : null}
         </section>

@@ -5,7 +5,9 @@ import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAx
 import { ArrowDownRight, ArrowUpRight, BarChart3, TrendingDown, TrendingUp } from 'lucide-react';
 import { db, type Category, type Transaction } from '@/lib/db';
 import { useAppStore } from '@/store/useAppStore';
-import { formatMoney, fromMinor } from '@/lib/money';
+import { fromMinor } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import { monthKey, monthLabel, shiftMonthKey } from '@/lib/date';
 import PageHeader from '@/components/PageHeader';
 import MonthSwitcher from '@/components/MonthSwitcher';
@@ -27,6 +29,7 @@ export default function Insights() {
   const settings = useAppStore((s) => s.settings);
   const currency = settings?.activeCurrencyCode || 'USD';
   const locale = settings?.locale || 'en-US';
+  const amountsVisible = useAmountsVisible();
   const current = monthKey(new Date());
 
   const [month, setMonth] = useState(current);
@@ -46,6 +49,12 @@ export default function Insights() {
     days: number;
     avgDaily: number;
     monthCount: number;
+    forecast: {
+      projected: number;
+      avgMonthly: number;
+      overPace: boolean;
+      safePerDay: number;
+    } | null;
   }>(() => {
     const list = transactions || [];
     const prevKey = shiftMonthKey(month, -1);
@@ -89,6 +98,40 @@ export default function Insights() {
 
     const monthCount = list.filter((t) => String(t.date || '').slice(0, 7) === month).length;
 
+    // Forecast: simple average of the last 3 full months (v1, unweighted).
+    let forecast: {
+      projected: number;
+      avgMonthly: number;
+      overPace: boolean;
+      safePerDay: number;
+    } | null = null;
+    if (isCurrent) {
+      const pastKeys = [1, 2, 3].map((i) => shiftMonthKey(month, -i));
+      let histExpense = 0;
+      let histDays = 0;
+      for (const k of pastKeys) {
+        const [py, pm] = k.split('-').map(Number);
+        histDays += getDaysInMonth(new Date(py, pm - 1, 1));
+      }
+      list.forEach((t) => {
+        if (t.type !== 'expense') return;
+        if (pastKeys.includes(String(t.date || '').slice(0, 7))) histExpense += t.amount;
+      });
+      if (histExpense > 0 && histDays > 0) {
+        const dailyBurn = histExpense / histDays;
+        const avgMonthly = Math.round((histExpense / pastKeys.length));
+        const daysLeft = Math.max(days - elapsed, 0);
+        const projected = Math.round(expense + dailyBurn * daysLeft);
+        const proRata = (avgMonthly / days) * elapsed;
+        forecast = {
+          projected,
+          avgMonthly,
+          overPace: expense > proRata,
+          safePerDay: daysLeft > 0 ? Math.max(Math.round((avgMonthly - expense) / daysLeft), 0) : 0,
+        };
+      }
+    }
+
     return {
       income,
       expense,
@@ -100,6 +143,7 @@ export default function Insights() {
       days,
       avgDaily: elapsed > 0 ? Math.round(expense / elapsed) : 0,
       monthCount,
+      forecast,
     };
   }, [transactions, month, categoryMap, currency, current]);
 
@@ -145,7 +189,7 @@ export default function Insights() {
           />
         </div>
       ) : (
-        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-4 grid gap-4 [&>*]:min-w-0 md:grid-cols-2 lg:grid-cols-3">
           <section className="surface p-4">
             <h2 className="text-[14.5px] font-semibold">Month summary</h2>
             <div className="mt-3 space-y-3">
@@ -154,7 +198,7 @@ export default function Insights() {
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <ArrowDownRight size={13} className="text-income" /> Income
                   </span>
-                  <span className="tnum font-semibold text-income">{formatMoney(data.income, currency, locale)}</span>
+                  <span className="tnum font-semibold text-income">{formatMasked(data.income, currency, locale, amountsVisible)}</span>
                 </div>
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-secondary">
                   <div
@@ -168,7 +212,7 @@ export default function Insights() {
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <ArrowUpRight size={13} className="text-expense" /> Expenses
                   </span>
-                  <span className="tnum font-semibold text-expense">{formatMoney(data.expense, currency, locale)}</span>
+                  <span className="tnum font-semibold text-expense">{formatMasked(data.expense, currency, locale, amountsVisible)}</span>
                 </div>
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-secondary">
                   <div
@@ -184,10 +228,39 @@ export default function Insights() {
               </span>
               <span className={cn('tnum text-[15px] font-bold', data.net >= 0 ? 'text-income' : 'text-expense')}>
                 {data.net >= 0 ? '+' : '−'}
-                {formatMoney(Math.abs(data.net), currency, locale)}
+                {formatMasked(Math.abs(data.net), currency, locale, amountsVisible)}
               </span>
             </div>
           </section>
+
+          {data.forecast ? (
+            <section className="surface p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h2 className="text-[14.5px] font-semibold">Forecast</h2>
+                  <p className="mt-0.5 text-[11.5px] text-muted-foreground">At your 3-month average pace</p>
+                </div>
+                <span
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-[10.5px] font-bold',
+                    data.forecast.overPace ? 'bg-expense/12 text-expense' : 'bg-income/12 text-income',
+                  )}
+                >
+                  {data.forecast.overPace ? 'Over pace' : 'On track'}
+                </span>
+              </div>
+              <p className="tnum mt-3 text-[24px] font-bold leading-none tracking-tight">
+                {formatMasked(data.forecast.projected, currency, locale, amountsVisible)}
+              </p>
+              <p className="mt-1.5 text-[11.5px] text-muted-foreground">projected spending by month end</p>
+              <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-[12px]">
+                <span className="text-muted-foreground">Safe to spend daily</span>
+                <span className="tnum font-semibold">
+                  {formatMasked(data.forecast.safePerDay, currency, locale, amountsVisible)}/day
+                </span>
+              </div>
+            </section>
+          ) : null}
 
           <section className="surface p-4">
             <h2 className="text-[14.5px] font-semibold">Category breakdown</h2>
@@ -215,7 +288,7 @@ export default function Insights() {
                           <div className="rounded-xl border border-border bg-popover px-3 py-2 text-[11.5px] shadow-xl">
                             <p className="text-muted-foreground">{props.payload[0].payload?.name}</p>
                             <p className="tnum mt-0.5 font-semibold">
-                              {props.payload[0].payload ? formatMoney(props.payload[0].payload.minor, currency, locale) : null}
+                              {props.payload[0].payload ? formatMasked(props.payload[0].payload.minor, currency, locale, amountsVisible) : null}
                             </p>
                           </div>
                         ) : null
@@ -225,7 +298,7 @@ export default function Insights() {
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-[9.5px] uppercase tracking-wider text-muted-foreground">Spent</span>
-                  <span className="tnum text-[13px] font-bold">{formatMoney(data.expense, currency, locale)}</span>
+                  <span className="tnum text-[13px] font-bold">{formatMasked(data.expense, currency, locale, amountsVisible)}</span>
                 </div>
               </div>
               <div className="min-w-0 flex-1 space-y-1.5">
@@ -248,7 +321,7 @@ export default function Insights() {
                 <h2 className="text-[14.5px] font-semibold">Daily spending</h2>
                 <p className="mt-0.5 text-[11.5px] text-muted-foreground">{monthLabel(month, locale)}</p>
               </div>
-              <span className="tnum text-[12px] text-muted-foreground">{formatMoney(data.avgDaily, currency, locale)}/day</span>
+              <span className="tnum text-[12px] text-muted-foreground">{formatMasked(data.avgDaily, currency, locale, amountsVisible)}/day</span>
             </div>
             <div className="mt-3 h-[130px] w-full md:h-[180px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -272,7 +345,7 @@ export default function Insights() {
                         <div className="rounded-xl border border-border bg-popover px-3 py-2 text-[11.5px] shadow-xl">
                           <p className="text-muted-foreground">Day {props.label}</p>
                           <p className="tnum mt-0.5 font-semibold">
-                            {props.payload[0].payload ? formatMoney(props.payload[0].payload.minor, currency, locale) : null}
+                            {props.payload[0].payload ? formatMasked(props.payload[0].payload.minor, currency, locale, amountsVisible) : null}
                           </p>
                         </div>
                       ) : null
@@ -306,7 +379,7 @@ export default function Insights() {
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{row.category.name}</span>
                       <span className="tnum text-[12.5px] font-semibold">
-                        {formatMoney(row.amount, currency, locale)}
+                        {formatMasked(row.amount, currency, locale, amountsVisible)}
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
@@ -324,18 +397,18 @@ export default function Insights() {
           <div className="grid grid-cols-2 gap-3 md:col-span-2 md:grid-cols-4 lg:col-span-3">
             <MiniStat
               label="Average per day"
-              value={formatMoney(data.avgDaily, currency, locale)}
+              value={formatMasked(data.avgDaily, currency, locale, amountsVisible)}
               hint={`Across ${month === current ? new Date().getDate() : data.days} days`}
             />
             <MiniStat
               label="Largest expense"
-              value={data.largest ? formatMoney(data.largest.amount, currency, locale) : '—'}
+              value={data.largest ? formatMasked(data.largest.amount, currency, locale, amountsVisible) : '—'}
               hint={data.largest ? categoryMap.get(data.largest.categoryId)?.name || '' : 'No expenses yet'}
               tone="text-expense"
             />
             <MiniStat
               label="Income"
-              value={formatMoney(data.income, currency, locale)}
+              value={formatMasked(data.income, currency, locale, amountsVisible)}
               hint="This month"
               tone="text-income"
             />
@@ -367,7 +440,7 @@ export default function Insights() {
               <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                 You spent{' '}
                 <span className={expenseChange > 0 ? 'text-expense' : 'text-income'}>
-                  {formatMoney(Math.abs(data.expense - data.prevExpense), currency, locale)}
+                  {formatMasked(Math.abs(data.expense - data.prevExpense), currency, locale, amountsVisible)}
                 </span>{' '}
                 {expenseChange > 0 ? 'more' : 'less'} than in {monthLabel(shiftMonthKey(month, -1), locale)}.
               </p>

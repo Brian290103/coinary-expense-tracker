@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Coins, Database, Info, Palette, Tags, Wallet } from 'lucide-react';
+import { Coins, Database, Gift, Info, Palette, Repeat, Tags, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SECTIONS = [
@@ -8,6 +8,8 @@ const SECTIONS = [
   { key: 'appearance', label: 'Appearance', icon: Palette },
   { key: 'categories', label: 'Categories', icon: Tags, to: '/categories' },
   { key: 'accounts', label: 'Accounts', icon: Wallet, to: '/accounts' },
+  { key: 'goals', label: 'Goals', icon: Gift, to: '/goals' },
+  { key: 'automations', label: 'Recurring', icon: Repeat, to: '/recurring' },
   { key: 'data', label: 'Data & backup', icon: Database },
   { key: 'about', label: 'About', icon: Info },
 ];

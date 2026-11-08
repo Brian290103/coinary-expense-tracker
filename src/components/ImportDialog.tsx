@@ -2,7 +2,9 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { FileUp } from 'lucide-react';
 import { toast } from 'sonner';
 import BottomSheet from './BottomSheet';
-import { formatMoney, toMinor } from '@/lib/money';
+import { toMinor } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import { importCsvRows, parseCsvText, restoreBackup, validateRows, type BackupPayload, type InvalidRow, type ValidRow } from '@/lib/csv';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
@@ -30,6 +32,7 @@ export default function ImportDialog({ open, onClose, mode = 'csv' }: ImportDial
   const [createMissing, setCreateMissing] = useState(true);
   const [replaceAll, setReplaceAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  const visible = useAmountsVisible();
 
   const reset = (): void => {
     setFileName('');
@@ -94,7 +97,7 @@ export default function ImportDialog({ open, onClose, mode = 'csv' }: ImportDial
         }
         const result = await restoreBackup(backup, { replace: replaceAll });
         toast.success(
-          `Restored ${result.transactions} transactions, ${result.categories} categories and ${result.budgets} budgets`,
+          `Restored ${result.transactions} transactions, ${result.categories} categories, ${result.budgets} budgets, ${result.goals} goals and ${result.recurring} rules`,
         );
       }
       close();
@@ -162,7 +165,7 @@ export default function ImportDialog({ open, onClose, mode = 'csv' }: ImportDial
                   </span>
                   <span className={cn('tnum font-semibold', row.type === 'income' ? 'text-income' : 'text-expense')}>
                     {row.type === 'income' ? '+' : '−'}
-                    {formatMoney(toMinor(row.amount, row.currency || currency), row.currency || currency, locale)}
+                    {formatMasked(toMinor(row.amount, row.currency || currency), row.currency || currency, locale, visible)}
                   </span>
                 </div>
               ))}
@@ -209,6 +212,8 @@ export default function ImportDialog({ open, onClose, mode = 'csv' }: ImportDial
                 ['Categories', backup.data.categories?.length || 0],
                 ['Accounts', backup.data.accounts?.length || 0],
                 ['Budgets', backup.data.budgets?.length || 0],
+                ['Goals', backup.data.goals?.length || 0],
+                ['Recurring', backup.data.recurring?.length || 0],
               ] as [string, number][]
             ).map(([label, count]) => (
               <div key={label} className="rounded-2xl border border-border p-3">

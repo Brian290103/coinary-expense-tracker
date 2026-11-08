@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import type { Category, Transaction } from '@/lib/db';
 import CategoryIcon from './CategoryIcon';
-import { formatMoney } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import { dayLabel } from '@/lib/date';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +17,7 @@ interface TransactionRowProps {
 }
 
 export default function TransactionRow({ tx, category, accountName, currency, locale, index = 0, onSelect }: TransactionRowProps) {
+  const visible = useAmountsVisible();
   const title = category?.name || (tx.type === 'income' ? 'Income' : 'Expense');
   const subtitleParts = [
     tx.note ? tx.note : null,
@@ -51,7 +53,7 @@ export default function TransactionRow({ tx, category, accountName, currency, lo
         )}
       >
         {tx.type === 'income' ? '+' : '−'}
-        {formatMoney(tx.amount, currency || tx.currencyCode, locale)}
+        {formatMasked(tx.amount, currency || tx.currencyCode, locale, visible)}
       </span>
     </motion.button>
   );

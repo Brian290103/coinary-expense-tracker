@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import type { Budget } from '@/lib/db';
-import { formatMoney } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 
 interface BudgetBarProps {
   budget: Budget;
@@ -13,6 +14,7 @@ interface BudgetBarProps {
 }
 
 export default function BudgetBar({ budget, categoryName, categoryColor, spent, currency, locale, onClick }: BudgetBarProps) {
+  const visible = useAmountsVisible();
   const limit = Number(budget.limitAmount) || 0;
   const pct = limit > 0 ? spent / limit : 0;
   const remaining = limit - spent;
@@ -31,7 +33,7 @@ export default function BudgetBar({ budget, categoryName, categoryColor, spent, 
           <span className="truncate text-[13.5px] font-medium">{categoryName}</span>
         </div>
         <span className="tnum shrink-0 text-[12px] text-muted-foreground">
-          {formatMoney(spent, currency, locale)} <span className="opacity-50">of</span> {formatMoney(limit, currency, locale)}
+          {formatMasked(spent, currency, locale, visible)} <span className="opacity-50">of</span> {formatMasked(limit, currency, locale, visible)}
         </span>
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-secondary">
@@ -47,8 +49,8 @@ export default function BudgetBar({ budget, categoryName, categoryColor, spent, 
         <span style={{ color: tone }}>{over ? 'Over budget' : `${Math.round(pct * 100)}% used`}</span>
         <span className="tnum text-muted-foreground">
           {over
-            ? `${formatMoney(Math.abs(remaining), currency, locale)} over`
-            : `${formatMoney(Math.max(remaining, 0), currency, locale)} left`}
+            ? `${formatMasked(Math.abs(remaining), currency, locale, visible)} over`
+            : `${formatMasked(Math.max(remaining, 0), currency, locale, visible)} left`}
         </span>
       </div>
     </button>

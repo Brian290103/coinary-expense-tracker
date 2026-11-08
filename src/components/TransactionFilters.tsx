@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import BottomSheet from './BottomSheet';
-import FilterControls, { type TxFilters } from './transactions/FilterControls';
+import FilterControls, { EMPTY_FILTERS, type TxFilters } from './transactions/FilterControls';
 import type { Account, Category } from '@/lib/db';
 
 interface TransactionFiltersProps {
@@ -13,8 +13,7 @@ interface TransactionFiltersProps {
 }
 
 export default function TransactionFilters({ open, onClose, filters, setFilters, categories, accounts }: TransactionFiltersProps) {
-  const reset = () =>
-    setFilters({ categoryId: '', accountId: '', paymentMethod: '', from: '', to: '' });
+  const reset = () => setFilters({ ...EMPTY_FILTERS });
 
   return (
     <BottomSheet

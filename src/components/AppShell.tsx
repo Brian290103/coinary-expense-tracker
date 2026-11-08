@@ -3,11 +3,15 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion } from 'framer-motion';
 import { ensureSeeded, db, SETTINGS_ID } from '@/lib/db';
+import { processRecurring } from '@/lib/recurring';
+import { maybeAutoBackup } from '@/lib/autoBackup';
+import { applyThemeClass } from '@/lib/theme';
 import { useAppStore } from '@/store/useAppStore';
 import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
 import Fab from './Fab';
 import TransactionSheet from './TransactionSheet';
+import TransactionViewSheet from './TransactionViewSheet';
 import ConfirmHost from './ConfirmHost';
 
 const ShellSkeleton = () => (
@@ -26,6 +30,10 @@ export default function AppShell() {
 
   useEffect(() => {
     ensureSeeded();
+    processRecurring().catch(() => {
+      // Recurring posting is best-effort; the list screen surfaces any backlog.
+    });
+    void maybeAutoBackup();
   }, []);
 
   useEffect(() => {
@@ -34,15 +42,7 @@ export default function AppShell() {
 
   useEffect(() => {
     if (!settings) return undefined;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const theme = settings.theme || 'dark';
-      const isDark = theme === 'dark' || (theme === 'system' && mq.matches);
-      document.documentElement.classList.toggle('dark', isDark);
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
+    return applyThemeClass(settings.theme);
   }, [settings]);
 
   if (settings === undefined) return <ShellSkeleton />;
@@ -67,6 +67,7 @@ export default function AppShell() {
       <Fab />
       <BottomNav />
       <TransactionSheet />
+      <TransactionViewSheet />
       <ConfirmHost />
     </div>
   );

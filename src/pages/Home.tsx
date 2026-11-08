@@ -7,21 +7,27 @@ import { ArrowDownLeft, ArrowUpRight, ChevronRight, Lock, Plus, Wallet } from 'l
 import type { LucideIcon } from 'lucide-react';
 import { db, type Transaction } from '@/lib/db';
 import { useAppStore } from '@/store/useAppStore';
-import { formatMoney, fromMinor } from '@/lib/money';
+import { fromMinor } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import { monthKey, monthLabel, monthLabelShort, recentMonthKeys } from '@/lib/date';
 import TransactionRow from '@/components/TransactionRow';
 import BudgetBar from '@/components/BudgetBar';
+import CategoryIcon from '@/components/CategoryIcon';
+import PrivacyToggle from '@/components/PrivacyToggle';
+import DueStrip from '@/components/DueStrip';
 import QuickActions from '@/components/home/QuickActions';
 import EmptyState from '@/components/EmptyState';
 import { cn } from '@/lib/utils';
 
-function ChartTip({ active, payload, currency, locale }: { active?: boolean; payload?: { payload: { fullLabel: string; minor: number } }[]; currency: string; locale: string }) {
+function ChartTip({ active, payload, currency, locale, visible }: { active?: boolean; payload?: readonly { payload?: { fullLabel: string; minor: number } }[]; currency: string; locale: string; visible: boolean }) {
   if (!active || !payload?.length) return null;
   const item = payload[0].payload;
+  if (!item) return null;
   return (
     <div className="rounded-xl border border-border bg-popover px-3 py-2 text-[11.5px] shadow-xl">
       <p className="text-muted-foreground">{item.fullLabel}</p>
-      <p className="tnum mt-0.5 text-[12.5px] font-semibold">{formatMoney(item.minor, currency, locale)}</p>
+      <p className="tnum mt-0.5 text-[12.5px] font-semibold">{formatMasked(item.minor, currency, locale, visible)}</p>
     </div>
   );
 }
@@ -59,9 +65,12 @@ const Skeleton = () => (
 export default function Home() {
   const settings = useAppStore((s) => s.settings);
   const openTxSheet = useAppStore((s) => s.openTxSheet);
+  const openViewTx = useAppStore((s) => s.openViewTx);
   const navigate = useNavigate();
   const currency = settings?.activeCurrencyCode || 'USD';
   const locale = settings?.locale || 'en-US';
+  const visible = useAmountsVisible();
+  const activeProfile = useAppStore((s) => s.activeProfile);
   const currentMonth = monthKey(new Date());
 
   const transactions = useLiveQuery(() => db.transactions.filter((t) => !t.deletedAt).toArray(), []);
@@ -138,14 +147,32 @@ export default function Home() {
           <h1 className="mt-2 text-[26px] font-bold leading-none">{monthLabel(currentMonth, locale)}</h1>
           <p className="mt-2 text-[12.5px] text-muted-foreground">Know where your money goes.</p>
         </div>
-        <div className="mt-1 flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-[10.5px] font-medium text-muted-foreground">
-          <Lock size={11} className="text-primary" />
-          Local only
+        <div className="mt-1 flex shrink-0 flex-col items-end gap-2">
+          {activeProfile ? (
+            <Link
+              to="/profile"
+              className="flex h-8 items-center gap-2 rounded-full border border-border bg-card py-1 pl-1.5 pr-2.5 text-[11px] font-semibold transition-colors hover:border-primary/40"
+            >
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-full"
+                style={{ backgroundColor: `${activeProfile.color}22`, color: activeProfile.color }}
+              >
+                <CategoryIcon name={activeProfile.icon} size={12} />
+              </span>
+              <span className="max-w-[110px] truncate">{activeProfile.name}</span>
+            </Link>
+          ) : null}
+          <div className="flex h-8 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-[10.5px] font-medium text-muted-foreground">
+            <Lock size={11} className="text-primary" />
+            Local only
+          </div>
         </div>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-12 lg:gap-6">
-        <div className="space-y-4 md:col-span-12 lg:col-span-7 lg:space-y-6 xl:col-span-8">
+      <DueStrip />
+
+      <div className="grid min-w-0 gap-4 md:grid-cols-12 lg:gap-6">
+        <div className="min-w-0 space-y-4 md:col-span-12 lg:col-span-7 lg:space-y-6 xl:col-span-8">
       <motion.section
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -154,9 +181,12 @@ export default function Home() {
       >
         <div className="pointer-events-none absolute -right-16 -top-24 h-52 w-52 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative">
-          <p className="text-[12.5px] font-medium text-muted-foreground">Total balance</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[12.5px] font-medium text-muted-foreground">Total balance</p>
+            <PrivacyToggle className="-mr-1 -mt-1 h-9 w-9 border-transparent bg-transparent" />
+          </div>
           <p className="tnum mt-2 text-[36px] font-bold leading-none tracking-tight">
-            {formatMoney(stats.balance, currency, locale)}
+            {formatMasked(stats.balance, currency, locale, visible)}
           </p>
 
           <div className="mt-5 grid grid-cols-2 gap-2.5">
@@ -164,13 +194,13 @@ export default function Home() {
               icon={ArrowDownLeft}
               label="Income"
               tone="income"
-              value={formatMoney(stats.income, currency, locale)}
+              value={formatMasked(stats.income, currency, locale, visible)}
             />
             <StatPill
               icon={ArrowUpRight}
               label="Expenses"
               tone="expense"
-              value={formatMoney(stats.expense, currency, locale)}
+              value={formatMasked(stats.expense, currency, locale, visible)}
             />
           </div>
 
@@ -183,7 +213,7 @@ export default function Home() {
               )}
             >
               {net >= 0 ? '+' : '−'}
-              {formatMoney(Math.abs(net), currency, locale)}
+              {formatMasked(Math.abs(net), currency, locale, visible)}
             </span>
           </div>
         </div>
@@ -217,7 +247,7 @@ export default function Home() {
                 <h2 className="text-[14.5px] font-semibold">Spending trend</h2>
                 <p className="mt-0.5 text-[11.5px] text-muted-foreground">Last 6 months</p>
               </div>
-              <p className="tnum text-[14px] font-semibold">{formatMoney(stats.expense, currency, locale)}</p>
+              <p className="tnum text-[14px] font-semibold">{formatMasked(stats.expense, currency, locale, visible)}</p>
             </div>
             <div className="mt-3 h-[118px] w-full md:h-[150px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -231,7 +261,7 @@ export default function Home() {
                   />
                   <Tooltip
                     cursor={{ fill: 'hsl(var(--foreground) / 0.04)', radius: 8 }}
-                    content={<ChartTip currency={currency} locale={locale} />}
+                    content={<ChartTip currency={currency} locale={locale} visible={visible} />}
                   />
                   <Bar dataKey="value" radius={[7, 7, 7, 7]}>
                     {chartData.map((entry, index) => (
@@ -267,7 +297,7 @@ export default function Home() {
                   accountName={accountMap.get(tx.accountId)?.name}
                   currency={currency}
                   locale={locale}
-                  onSelect={() => openTxSheet(tx)}
+                  onSelect={() => openViewTx(tx)}
                 />
               ))}
             </div>
@@ -278,7 +308,7 @@ export default function Home() {
 
         <div
           className={cn(
-            'space-y-4 md:col-span-12 md:grid md:gap-4 md:space-y-0 lg:col-span-5 lg:block lg:space-y-6 xl:col-span-4',
+            'min-w-0 space-y-4 md:col-span-12 md:grid md:gap-4 md:space-y-0 lg:col-span-5 lg:block lg:space-y-6 xl:col-span-4',
             budgetRows.length > 0 ? 'md:grid-cols-2' : 'md:grid-cols-1',
           )}
         >

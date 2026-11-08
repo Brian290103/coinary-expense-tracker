@@ -230,16 +230,20 @@ export interface BackupPayload {
     categories: Category[];
     accounts: Account[];
     budgets: import('./db').Budget[];
+    goals: import('./db').Goal[];
+    recurring: import('./db').RecurringRule[];
     settings: import('./db').AppSettings[];
   };
 }
 
 export async function buildBackup(): Promise<BackupPayload> {
-  const [transactions, categories, accounts, budgets, settings] = await Promise.all([
+  const [transactions, categories, accounts, budgets, goals, recurring, settings] = await Promise.all([
     db.transactions.toArray(),
     db.categories.toArray(),
     db.accounts.toArray(),
     db.budgets.toArray(),
+    db.goals.toArray(),
+    db.recurring.toArray(),
     db.settings.toArray(),
   ]);
   return {
@@ -247,16 +251,17 @@ export async function buildBackup(): Promise<BackupPayload> {
     format: 'coinary-backup',
     version: 1,
     exportedAt: nowIso(),
-    data: { transactions, categories, accounts, budgets, settings },
+    data: { transactions, categories, accounts, budgets, goals, recurring, settings },
   };
 }
 
-export async function restoreBackup(payload: BackupPayload, { replace = false }: { replace?: boolean } = {}): Promise<{ transactions: number; categories: number; accounts: number; budgets: number }> {
+export async function restoreBackup(payload: BackupPayload, { replace = false }: { replace?: boolean } = {}): Promise<{ transactions: number; categories: number; accounts: number; budgets: number; goals: number; recurring: number }> {
   if (!payload || payload.format !== 'coinary-backup' || !payload.data) {
     throw new Error('This file is not a Coinary backup');
   }
-  const { transactions = [], categories = [], accounts = [], budgets = [], settings = [] } = payload.data;
+  const { transactions = [], categories = [], accounts = [], budgets = [], goals = [], recurring = [], settings = [] } = payload.data;
 
+  // Dexie caps a transaction at 5 tables, so goals/recurring go in a second one.
   await db.transaction('rw', db.transactions, db.categories, db.accounts, db.budgets, db.settings, async () => {
     if (replace) {
       await Promise.all([
@@ -278,12 +283,21 @@ export async function restoreBackup(payload: BackupPayload, { replace = false }:
       }
     }
   });
+  await db.transaction('rw', db.goals, db.recurring, async () => {
+    if (replace) {
+      await Promise.all([db.goals.clear(), db.recurring.clear()]);
+    }
+    await db.goals.bulkPut(goals);
+    await db.recurring.bulkPut(recurring);
+  });
 
   return {
     transactions: transactions.length,
     categories: categories.length,
     accounts: accounts.length,
     budgets: budgets.length,
+    goals: goals.length,
+    recurring: recurring.length,
   };
 }
 

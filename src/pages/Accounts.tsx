@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ChevronRight, Plus, Wallet } from 'lucide-react';
 import { db, type Account } from '@/lib/db';
 import { useAppStore } from '@/store/useAppStore';
-import { formatMoney } from '@/lib/money';
+import { formatMasked } from '@/lib/privacy';
+import { useAmountsVisible } from '@/hooks/useAmountsVisible';
 import PageHeader from '@/components/PageHeader';
 import AccountSheet from '@/components/AccountSheet';
 import CategoryIcon from '@/components/CategoryIcon';
@@ -16,6 +17,7 @@ export default function Accounts() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
+  const visible = useAmountsVisible();
 
   const accounts = useLiveQuery(() => db.accounts.toArray(), [], []);
   const transactions = useLiveQuery(() => db.transactions.filter((t) => !t.deletedAt).toArray(), []);
@@ -59,7 +61,7 @@ export default function Accounts() {
       {active.length > 0 ? (
         <section className="surface mb-4 p-4">
           <p className="text-[11.5px] text-muted-foreground">Across your accounts</p>
-          <p className="tnum mt-1.5 text-[26px] font-bold leading-none">{formatMoney(total, currency, locale)}</p>
+          <p className="tnum mt-1.5 text-[26px] font-bold leading-none">{formatMasked(total, currency, locale, visible)}</p>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Only transactions assigned to an account are counted here.
           </p>
@@ -106,7 +108,7 @@ export default function Accounts() {
                 </span>
               </span>
               <span className="tnum shrink-0 text-[13.5px] font-semibold">
-                {formatMoney(balances[account.id] || 0, account.currencyCode || currency, locale)}
+                {formatMasked(balances[account.id] || 0, account.currencyCode || currency, locale, visible)}
               </span>
               <ChevronRight size={15} className="shrink-0 text-muted-foreground" />
             </button>
@@ -135,7 +137,7 @@ export default function Accounts() {
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[13px]">{account.name}</span>
                 <span className="tnum text-[12.5px] text-muted-foreground">
-                  {formatMoney(balances[account.id] || 0, account.currencyCode || currency, locale)}
+                  {formatMasked(balances[account.id] || 0, account.currencyCode || currency, locale, visible)}
                 </span>
               </button>
             ))}

@@ -8,7 +8,7 @@ export default function BottomNav() {
     <nav className="fixed inset-x-0 bottom-0 z-40 md:hidden">
       <div className="mx-auto w-full max-w-lg border-t border-border bg-card/85 px-2 pb-safe backdrop-blur-xl">
         <ul className="flex items-stretch justify-around">
-          {NAV_ITEMS.map(({ to, short, icon: Icon }) => (
+          {NAV_ITEMS.filter((item) => item.bottomBar).map(({ to, short, icon: Icon }) => (
             <li key={to} className="flex-1">
               <NavLink
                 to={to}

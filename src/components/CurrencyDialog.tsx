@@ -31,6 +31,13 @@ export default function CurrencyDialog({ open, onClose }: { open: boolean; onClo
         await db.transactions.toCollection().modify({ currencyCode: code });
         await db.budgets.toCollection().modify({ currencyCode: code });
         await db.accounts.toCollection().modify({ currencyCode: code });
+        const profileId = useAppStore.getState().activeProfileId;
+        if (profileId) {
+          const { setProfileCurrency, getProfile } = await import('@/lib/profiles');
+          await setProfileCurrency(profileId, code);
+          const refreshed = await getProfile(profileId);
+          if (refreshed) useAppStore.getState().setActiveProfile(refreshed);
+        }
         toast.success(`Ledger currency is now ${code}`);
       },
     });

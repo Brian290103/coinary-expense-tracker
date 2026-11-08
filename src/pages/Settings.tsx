@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import {
-  CalendarDays, ChevronRight, Coins, Database, FileDown, FileUp, Info, Palette,
+  CalendarDays, ChevronRight, Coins, Database, FileDown, FileUp, Gift, Info, Palette, Repeat,
   ShieldCheck, Tags, Trash2, Wallet,
 } from 'lucide-react';
 import { IconBrandGithub } from '@tabler/icons-react';
@@ -16,6 +16,7 @@ import PageHeader from '@/components/PageHeader';
 import CurrencyDialog from '@/components/CurrencyDialog';
 import ImportDialog from '@/components/ImportDialog';
 import SettingsNav from '@/components/settings/SettingsNav';
+import AutoBackupControls from '@/components/settings/AutoBackupControls';
 import { cn } from '@/lib/utils';
 
 interface SectionProps {
@@ -90,6 +91,7 @@ function Row({ icon: Icon, title, value, onClick, to, danger }: RowProps) {
 
 export default function Settings() {
   const settings = useAppStore((s) => s.settings);
+  const activeProfile = useAppStore((s) => s.activeProfile);
   const askConfirm = useAppStore((s) => s.askConfirm);
   const currency = settings?.activeCurrencyCode || 'USD';
   const meta = currencyMeta(currency);
@@ -97,16 +99,17 @@ export default function Settings() {
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [importMode, setImportMode] = useState<'csv' | 'json' | null>(null);
 
+  const profileName = activeProfile?.name || 'this profile';
   const clearData = () => {
     askConfirm({
-      title: 'Clear all data?',
-      description: 'Every transaction, budget, account and category on this device will be deleted. Export a backup first if you might need it.',
+      title: `Clear all data in ${profileName}?`,
+      description: `Every transaction, budget, account and category in ${profileName} will be deleted. Export a backup first if you might need it.`,
       confirmLabel: 'Continue',
       destructive: true,
       onConfirm: () =>
         askConfirm({
           title: 'This cannot be undone',
-          description: 'Your ledger will be emptied and default categories restored.',
+          description: `The ${profileName} ledger will be emptied and default categories restored.`,
           confirmLabel: 'Erase everything',
           destructive: true,
           onConfirm: async () => {
@@ -125,7 +128,10 @@ export default function Settings() {
 
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Local, private, yours" />
+      <PageHeader
+        title="Settings"
+        subtitle={activeProfile ? `${activeProfile.name} · local, private, yours` : 'Local, private, yours'}
+      />
 
       <div className="md:grid md:grid-cols-[168px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[224px_minmax(0,1fr)] lg:gap-8">
         <SettingsNav />
@@ -202,11 +208,23 @@ export default function Settings() {
             <Row icon={Wallet} title="Accounts" value="Cash, bank, cards" to="/accounts" />
           </Section>
 
+          <Section id="goals" title="Savings goals">
+            <Row icon={Gift} title="Goals" value="Wishlist targets" to="/goals" />
+          </Section>
+
+          <Section id="automations" title="Automations">
+            <Row icon={Repeat} title="Recurring" value="Auto-posted rules" to="/recurring" />
+          </Section>
+
           <Section id="data" title="Data & backup">
+            <AutoBackupControls />
             <Row icon={FileDown} title="Export CSV" value="Transactions" onClick={() => exportTransactionsCsv(currency)} />
             <Row icon={Database} title="Export JSON backup" value="Everything" onClick={exportBackupJson} />
             <Row icon={FileUp} title="Import CSV" onClick={() => setImportMode('csv')} />
             <Row icon={FileUp} title="Import JSON backup" onClick={() => setImportMode('json')} />
+            <p className="px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              Exports always contain real amounts, even while amounts are hidden on screen.
+            </p>
           </Section>
 
           <Section id="danger" title="Danger zone" danger>

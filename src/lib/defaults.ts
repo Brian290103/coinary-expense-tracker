@@ -53,6 +53,7 @@ type AccountSeed = Omit<Account, 'createdAt' | 'updatedAt'>;
 export const makeDefaultAccounts = (currencyCode = 'USD'): AccountSeed[] =>
   [
     { id: 'acc-cash', name: 'Cash', type: 'cash', icon: 'banknote', color: '#34D399' },
+    { id: 'acc-mobile-money', name: 'Mobile Money', type: 'mobile_money', icon: 'smartphone', color: '#A78BFA' },
     { id: 'acc-bank', name: 'Bank Account', type: 'bank', icon: 'landmark', color: '#60A5FA' },
   ].map((a) => ({
     ...a,

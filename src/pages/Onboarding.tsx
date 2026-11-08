@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowRight, ArrowUpRight, Check, Coins, Lock, Search, ShieldCheck, Smartphone, WifiOff } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Coins, ShieldCheck, Smartphone, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, ensureSeeded, seedAccountsForCurrency, SETTINGS_ID, updateSettings } from '@/lib/db';
-import { currencyMeta, searchCurrencies } from '@/lib/currencies';
+import { setProfileCurrency } from '@/lib/profiles';
+import { applyThemeClass } from '@/lib/theme';
 import type { TxType } from '@/lib/db';
 import { useAppStore } from '@/store/useAppStore';
+import CurrencyPicker from '@/components/CurrencyPicker';
 import { cn } from '@/lib/utils';
 
 const STEPS = ['Welcome', 'Currency', 'Ready'];
@@ -19,21 +21,20 @@ export default function Onboarding() {
   const existing = useLiveQuery(() => db.settings.get(SETTINGS_ID), []);
 
   const [step, setStep] = useState(0);
-  const [query, setQuery] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
-    document.documentElement.classList.add('dark');
     ensureSeeded();
   }, []);
 
   useEffect(() => {
+    return applyThemeClass(existing?.theme);
+  }, [existing?.theme]);
+
+  useEffect(() => {
     if (existing?.activeCurrencyCode) setCurrency(existing.activeCurrencyCode);
   }, [existing?.activeCurrencyCode]);
-
-  const results = useMemo(() => searchCurrencies(query), [query]);
-  const selected = currencyMeta(currency);
 
   const finish = async (quickType: TxType | null) => {
     if (finishing) return;
@@ -42,9 +43,11 @@ export default function Onboarding() {
       const updated = await updateSettings({ activeCurrencyCode: currency, onboarded: true });
       await seedAccountsForCurrency(currency);
       if (updated) setSettings(updated);
+      const profileId = useAppStore.getState().activeProfileId;
+      if (profileId) await setProfileCurrency(profileId, currency);
       if (quickType) openTxSheet(null, quickType);
       navigate('/', { replace: true });
-    } catch (err) {
+    } catch {
       toast.error('Could not finish setup');
       setFinishing(false);
     }
@@ -153,52 +156,7 @@ export default function Onboarding() {
                 </p>
               </div>
 
-              <div className="relative mt-5">
-                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search currency or code"
-                  aria-label="Search currencies"
-                  className="field pl-10"
-                />
-              </div>
-
-              <div className="no-scrollbar mt-3 flex-1 overflow-y-auto rounded-2xl border border-border">
-                {results.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-[12.5px] text-muted-foreground">No currencies match “{query}”.</p>
-                ) : (
-                  results.map((c) => {
-                    const active = c.code === currency;
-                    return (
-                      <button
-                        key={c.code}
-                        type="button"
-                        onClick={() => setCurrency(c.code)}
-                        className={cn(
-                          'flex min-h-[52px] w-full items-center gap-3 border-b border-border/60 px-4 text-left transition-colors last:border-b-0',
-                          active ? 'bg-primary/8' : 'hover:bg-secondary/50',
-                        )}
-                      >
-                        <span className="text-[17px] leading-none">{c.flag}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13.5px] font-medium">{c.name}</span>
-                          <span className="text-[11px] text-muted-foreground">{c.code} · {c.symbol}</span>
-                        </span>
-                        {active ? <Check size={16} className="text-primary" /> : null}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="mt-4 flex items-center gap-2 rounded-2xl bg-secondary/50 px-4 py-3">
-                <Lock size={14} className="shrink-0 text-primary" />
-                <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-                  Selected: <span className="font-semibold text-foreground">{selected.code}</span> — no exchange rates,
-                  no conversion, ever.
-                </p>
-              </div>
+              <CurrencyPicker value={currency} onChange={setCurrency} />
 
               <div className="mt-4 flex gap-2">
                 <button

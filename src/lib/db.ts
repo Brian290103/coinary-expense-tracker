@@ -16,6 +16,7 @@ export interface Transaction {
   note: string;
   paymentMethod: string;
   receiptPhotoPath: string;
+  recurringId?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
@@ -56,6 +57,24 @@ export interface Budget {
   updatedAt: string;
 }
 
+export interface TxFilters {
+  categoryId: string;
+  accountId: string;
+  paymentMethods: string[];
+  minAmount?: number;
+  maxAmount?: number;
+  from: string;
+  to: string;
+}
+
+export interface FilterPreset {
+  id: string;
+  name: string;
+  filters: TxFilters;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppSettings {
   id: string;
   activeCurrencyCode: string;
@@ -66,6 +85,13 @@ export interface AppSettings {
   biometricLockEnabled: boolean;
   onboarded: boolean;
   sidebarCollapsed?: boolean;
+  amountsVisible?: boolean;
+  autoBackupEnabled?: boolean;
+  autoBackupFrequency?: 'daily' | 'weekly';
+  lastBackupAt?: string;
+  profileLockEnabled?: boolean;
+  profilePinHash?: string;
+  profilePinSalt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -76,16 +102,59 @@ export interface Receipt {
   createdAt: string;
 }
 
-class CoinaryDB extends Dexie {
+export interface Goal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  savedAmount: number;
+  icon: string;
+  color: string;
+  deadline?: string;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const LEGACY_DB_NAME = 'coinary-ledger';
+
+/** Database name for a profile. The very first profile reuses the legacy name. */
+export function profileDbName(profileId: string): string {
+  return profileId === 'personal' ? LEGACY_DB_NAME : `coinary-ledger-${profileId}`;
+}
+
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly';
+
+export interface RecurringRule {
+  id: string;
+  type: TxType;
+  amount: number;
+  currencyCode: string;
+  categoryId: string;
+  accountId: string;
+  note: string;
+  paymentMethod: string;
+  frequency: RecurringFrequency;
+  dayOfMonth?: number;
+  nextRunDate: string;
+  lastRunDate?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export class CoinaryDB extends Dexie {
   transactions!: Table<Transaction, string>;
   categories!: Table<Category, string>;
   accounts!: Table<Account, string>;
   budgets!: Table<Budget, string>;
   settings!: Table<AppSettings, string>;
   receipts!: Table<Receipt, string>;
+  goals!: Table<Goal, string>;
+  recurring!: Table<RecurringRule, string>;
+  filterPresets!: Table<FilterPreset, string>;
 
-  constructor() {
-    super('coinary-ledger');
+  constructor(dbName = LEGACY_DB_NAME) {
+    super(dbName);
     this.version(1).stores({
       transactions: 'id, date, type, categoryId, accountId, createdAt, deletedAt',
       categories: 'id, type, sortOrder, name',
@@ -94,10 +163,65 @@ class CoinaryDB extends Dexie {
       settings: 'id',
       receipts: 'id',
     });
+    this.version(2).stores({
+      transactions: 'id, date, type, categoryId, accountId, createdAt, deletedAt',
+      categories: 'id, type, sortOrder, name',
+      accounts: 'id, name, type, isArchived',
+      budgets: 'id, month, categoryId, [month+categoryId]',
+      settings: 'id',
+      receipts: 'id',
+      goals: 'id, createdAt',
+    });
+    this.version(3).stores({
+      transactions: 'id, date, type, categoryId, accountId, createdAt, deletedAt, recurringId',
+      categories: 'id, type, sortOrder, name',
+      accounts: 'id, name, type, isArchived',
+      budgets: 'id, month, categoryId, [month+categoryId]',
+      settings: 'id',
+      receipts: 'id',
+      goals: 'id, createdAt',
+      recurring: 'id, isActive, nextRunDate',
+    });
+    // v3 indexed a boolean (isActive), which IndexedDB rejects as a key.
+    // v4 drops that index — active rules are filtered in JS instead.
+    this.version(4).stores({
+      transactions: 'id, date, type, categoryId, accountId, createdAt, deletedAt, recurringId',
+      categories: 'id, type, sortOrder, name',
+      accounts: 'id, name, type, isArchived',
+      budgets: 'id, month, categoryId, [month+categoryId]',
+      settings: 'id',
+      receipts: 'id',
+      goals: 'id, createdAt',
+      recurring: 'id, nextRunDate',
+    });
+    // v5 adds saved filter presets (per profile).
+    this.version(5).stores({
+      transactions: 'id, date, type, categoryId, accountId, createdAt, deletedAt, recurringId',
+      categories: 'id, type, sortOrder, name',
+      accounts: 'id, name, type, isArchived',
+      budgets: 'id, month, categoryId, [month+categoryId]',
+      settings: 'id',
+      receipts: 'id',
+      goals: 'id, createdAt',
+      recurring: 'id, nextRunDate',
+      filterPresets: 'id, createdAt',
+    });
   }
 }
 
-export const db = new CoinaryDB();
+/** Active profile's database. Reassigned on profile switch (ES live binding). */
+export let db: CoinaryDB = new CoinaryDB(LEGACY_DB_NAME);
+
+/** Point the shared `db` binding at another profile's database. */
+export function openProfileDatabase(profileId: string): CoinaryDB {
+  try {
+    db.close();
+  } catch {
+    // Ignore — freshly constructed instances may already be closed.
+  }
+  db = new CoinaryDB(profileDbName(profileId));
+  return db;
+}
 
 export const SETTINGS_ID = 'app-settings';
 
@@ -114,31 +238,40 @@ export const DEFAULT_SETTINGS: SettingsSeed = {
   id: SETTINGS_ID,
   activeCurrencyCode: 'USD',
   locale: 'en-US',
-  theme: 'dark',
+  theme: 'system',
   startOfWeek: 'monday',
   firstDayOfMonth: 1,
   biometricLockEnabled: false,
   onboarded: false,
+  amountsVisible: true,
 };
 
-let seedPromise: Promise<AppSettings | undefined> | null = null;
+const seedPromises = new Map<string, Promise<AppSettings | undefined>>();
 
-/** Seeds default categories + settings the first time the app opens. */
-export function ensureSeeded(): Promise<AppSettings | undefined> {
-  if (!seedPromise) {
-    seedPromise = (async () => {
-      const existing = await db.settings.get(SETTINGS_ID);
-      if (existing) return existing;
-      const ts = nowIso();
-      const categories: Category[] = DEFAULT_CATEGORIES.map((c) => ({ ...c, createdAt: ts, updatedAt: ts }));
-      await db.categories.bulkPut(categories);
-      const locale = typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-US';
-      const settings: AppSettings = { ...DEFAULT_SETTINGS, locale, createdAt: ts, updatedAt: ts };
-      await db.settings.put(settings);
-      return settings;
-    })();
-  }
-  return seedPromise;
+/** Seeds default categories + settings the first time a profile's DB opens. */
+export function ensureSeeded(currencyCode?: string): Promise<AppSettings | undefined> {
+  const key = db.name;
+  const cached = seedPromises.get(key);
+  if (cached) return cached;
+  const promise = (async () => {
+    const existing = await db.settings.get(SETTINGS_ID);
+    if (existing) return existing;
+    const ts = nowIso();
+    const categories: Category[] = DEFAULT_CATEGORIES.map((c) => ({ ...c, createdAt: ts, updatedAt: ts }));
+    await db.categories.bulkPut(categories);
+    const locale = typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-US';
+    const settings: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      activeCurrencyCode: currencyCode || DEFAULT_SETTINGS.activeCurrencyCode,
+      locale,
+      createdAt: ts,
+      updatedAt: ts,
+    };
+    await db.settings.put(settings);
+    return settings;
+  })();
+  seedPromises.set(key, promise);
+  return promise;
 }
 
 export async function seedAccountsForCurrency(currencyCode: string): Promise<void> {
@@ -224,6 +357,9 @@ export async function clearAllData(): Promise<void> {
       db.budgets.clear(),
       db.receipts.clear(),
     ]);
+  });
+  await db.transaction('rw', db.goals, db.recurring, async () => {
+    await Promise.all([db.goals.clear(), db.recurring.clear()]);
   });
 }
 
